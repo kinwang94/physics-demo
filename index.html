@@ -89,13 +89,18 @@ nav button[aria-selected="true"] .q{color:var(--ground); opacity:.6}
 .main{display:grid; grid-template-columns:minmax(0,1fr) 392px; grid-template-rows:minmax(0,1fr); gap:12px; flex:1; min-height:0}
 .stage{position:relative; background:var(--surface); border:1px solid var(--line); display:flex; flex-direction:column; min-height:470px}
 canvas{display:block; width:100%; flex:1; min-height:0; touch-action:none}
+.stagehead{
+  position:absolute; left:15px; top:11px; display:flex; align-items:center; gap:11px;
+  flex-wrap:wrap; max-width:calc(100% - 130px); pointer-events:none;
+}
 .stagenote{
-  position:absolute; left:15px; top:12px; font-size:13px; color:var(--mute);
-  font-family:"IBM Plex Mono",monospace; letter-spacing:.05em; pointer-events:none;
+  font-size:13px; color:var(--mute); line-height:1.5;
+  font-family:"IBM Plex Mono",monospace; letter-spacing:.05em;
+  background:var(--surface); padding:2px 5px;
 }
 .badge{
-  position:absolute; left:15px; top:36px; font-size:14px; font-weight:500;
-  padding:3px 11px; border:1px solid var(--line); background:var(--ground); pointer-events:none;
+  font-size:13.5px; font-weight:500; line-height:1.5;
+  padding:2px 10px; border:1px solid var(--line); background:var(--ground);
 }
 .badge[data-s="ok"]{color:var(--ok); border-color:var(--ok)}
 .resetbtn{
@@ -218,8 +223,10 @@ var + sub{margin-left:-.16em}
   <div class="main">
     <div class="stage">
       <canvas id="cv"></canvas>
-      <div class="stagenote" id="note"></div>
-      <div class="badge" id="badge" hidden></div>
+      <div class="stagehead">
+        <div class="stagenote" id="note"></div>
+        <div class="badge" id="badge" hidden></div>
+      </div>
       <button type="button" class="resetbtn" id="resetAll" title="回到起始狀態">重設</button>
       <div class="controls" id="controls"></div>
     </div>
@@ -366,7 +373,7 @@ function tag(text, x, y, color, size, align, plate, math){
     const tw = ctx.measureText(text).width, th = size * (math ? 1.2 : 1);
     const lx = align === "left" ? px - 5 : align === "right" ? px - tw - 5 : px - tw/2 - 5;
     ctx.save();
-    ctx.globalAlpha = 0.72;
+    ctx.globalAlpha = 0.8;
     ctx.fillStyle = C.surface;
     roundRect(lx, py - th*0.82, tw + 10, th*1.64, 3);
     ctx.fill();
@@ -490,7 +497,7 @@ function drawLoad(cx, topY, label){
   ctx.fillStyle = C.ground; ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText(label, px + w/2, py + h/2);
 }
-function dimV(x, y1, y2, text, color, tdx){
+function dimV(x, y1, y2, text, color, tdx, tdy){
   const px = X(x);
   ctx.strokeStyle = color; ctx.lineWidth = 1.4;
   ctx.beginPath(); ctx.moveTo(px, Y(y1)); ctx.lineTo(px, Y(y2)); ctx.stroke();
@@ -499,7 +506,7 @@ function dimV(x, y1, y2, text, color, tdx){
     ctx.moveTo(px, e[0]); ctx.lineTo(px - 5, e[0] + 8*e[1]); ctx.lineTo(px + 5, e[0] + 8*e[1]);
     ctx.closePath(); ctx.fillStyle = color; ctx.fill();
   });
-  if(text) tag(text, x + (tdx || 0), (y1 + y2)/2, color, 14);
+  if(text) tag(text, x + (tdx || 0), (y1 + y2)/2 + (tdy || 0), color, 14);
 }
 function dimH(x1, x2, y, text, color){
   const py = Y(y);
@@ -664,8 +671,9 @@ function drawRig(rect){
   /* 下界要留到 G 標籤的下緣：重物底部 + 箭頭 26 + 字高，否則拉繩為 0 時會被裁走 */
   let bx0, bx1, by0 = rig.up ? -26 : -18, by1 = rig.up ? 232 : Y_HAND0 + STROKE + 24;
   const halfW = (pulleysOf(rig).length - 1)/2 * PITCH_SPLIT + R;
-  bx0 = -halfW - 48; bx1 = halfW + 88;
-  if(ph.h > 0.4) bx0 -= 30;              // 左邊要放得下 h 的標註
+  /* 左邊固定預留 h 標註的位置：若按 h 有沒有變大才讓位，
+     拉繩時世界範圍會突然改變，整幅圖連天花都會跳一下。      */
+  bx0 = -halfW - 88; bx1 = halfW + 88;
   if(rig.angle){
     const th = rig.angle*Math.PI/180, d = [Math.sin(th), Math.cos(th)];
     bx1 = Math.max(bx1, halfW + R*d[1] + d[0]*(52 + STROKE) + 56);
@@ -683,7 +691,6 @@ function drawRig(rect){
   const G0 = layout(rig, 0, 0, t);
   const spin = -L(ph.s) / L(R) * 0.55;
 
-  gridBg(rect);
   drawCeiling(bx0 + 6, bx1 - 6, Y_CEIL);
 
   /* 兩個滑輪組的外殼：疊裝時是長夾板，分開時變成扁殼 */
@@ -763,24 +770,17 @@ function drawRig(rect){
     });
   }
 
-  /* 力 */
+  /* 距離先畫：引線與尺寸屬於底圖，力的標籤最後畫才不會被引線劃過 */
   const hd = G.handDir, hp = G.handPt;
-  const ex = hp[0] + hd[0]*26, ey = hp[1] + hd[1]*26;
-  arrow(hp[0], hp[1], ex, ey, C.accent, 3);
-  if(Math.abs(hd[0]) > 0.3) tag("F = " + fmt(ph.F) + " N", ex + (hd[0] > 0 ? 10 : -10), ey + 12, C.accent, 16, hd[0] > 0 ? "left" : "right");
-  else                      tag("F = " + fmt(ph.F) + " N", ex + 10, ey + (hd[1] < 0 ? 4 : -2), C.accent, 16, "left");
-
-  arrow(G.loadX, G.loadTop + LH, G.loadX, G.loadTop + LH + 26, C.accent, 3);
-  tag("G = " + fmt(rig.G) + " N", G.loadX + 14, G.loadTop + LH + 15, C.accent, 16, "left");
-
-  /* 距離 */
   if(ph.h > 0.4){
-    const right = hd[0] < -0.2;
-    const dx = right ? G.loadX + LW/2 + 24 : G.loadX - LW/2 - 24;
-    const edge = G.loadX + (right ? LW/2 : -LW/2);
-    line(dx, G0.loadTop + LH/2, edge, G0.loadTop + LH/2, C.ghost, 1, [4,4]);
-    line(dx, G.loadTop + LH/2, edge, G.loadTop + LH/2, C.ghost, 1, [4,4]);
-    dimV(dx, G0.loadTop + LH/2, G.loadTop + LH/2, "h=" + fmt(ph.h) + "cm", C.teal);
+    const dx = bx0 + 24;                       // 固定在左邊，不隨重物移位
+    const edge = G.loadX - LW/2;
+    const ya = G0.loadTop + LH/2, yb = G.loadTop + LH/2;
+    line(dx, ya, edge, ya, C.ghost, 1, [4,4]);
+    line(dx, yb, edge, yb, C.ghost, 1, [4,4]);
+    /* 字貼上端：這樣與重物下方的 G 標籤永遠相隔同一段距離 */
+    const mid = (ya + yb)/2, tdy = Math.min(Math.min(ya, yb) + 12, mid) - mid;
+    dimV(dx, ya, yb, "h=" + fmt(ph.h) + "cm", C.teal, 0, tdy);
   }
   if(ph.s > 0.4){
     const q0 = G0.handPt, q1 = G.handPt;
@@ -793,6 +793,19 @@ function drawRig(rect){
     dimSeg([q0[0] + nx*off, q0[1] + ny*off], [q1[0] + nx*off, q1[1] + ny*off],
            "s=" + fmt(ph.s) + "cm", C.barA, nx*18, ny*18);   // 字再讓開一點，不要壓住繩
   }
+
+  /* 力 */
+  const ex = hp[0] + hd[0]*26, ey = hp[1] + hd[1]*26;
+  arrow(hp[0], hp[1], ex, ey, C.accent, 3);
+  if(Math.abs(hd[0]) > 0.3) tag("F = " + fmt(ph.F) + " N", ex + (hd[0] > 0 ? 10 : -10), ey + 12, C.accent, 16, hd[0] > 0 ? "left" : "right");
+  else                      tag("F = " + fmt(ph.F) + " N", ex + 10, ey + (hd[1] < 0 ? 4 : -2), C.accent, 16, "left");
+
+  arrow(G.loadX, G.loadTop + LH, G.loadX, G.loadTop + LH + 26, C.accent, 3);
+  /* 手與重物太近時（例如單一個定滑輪），G 與 F 的標籤會併在一起，
+     改把 G 放到重物另一邊。用起始位置判斷，拉繩途中不會左右跳。   */
+  const gLeft = G0.handPt[0] > G.loadX && G0.handPt[0] - G.loadX < 60;
+  tag("G = " + fmt(rig.G) + " N", G.loadX + (gLeft ? -26 : 14), G.loadTop + LH + 15,
+      C.accent, 16, gLeft ? "right" : "left");
 
   drawLegend(rect, G.wheels, rig.Gp > 0 && G.movs.length
     ? "動滑輪 " + fmt(rig.Gp) + " N × " + G.movs.length + " 個，也要一起提起" : null);
@@ -905,7 +918,6 @@ function drawLever(rect){
      否則提到最高時繩頭與 2h 標註會穿過天花。                  */
   const CEIL = P.isFix ? -112 : -158;
   fitWorld(rect, -126, CEIL - 16, 146, 202, 14);
-  gridBg(rect);
 
   /* ---- 滑輪的樣子（morph = 0 時清楚，變成槓桿時淡出） ---- */
   const aP = 1 - 0.80*mt;
@@ -927,7 +939,8 @@ function drawLever(rect){
                C.rope, Math.max(2.6, L(1.6)));
     ctx.fillStyle = C.metal;
     ctx.beginPath(); ctx.arc(X(-LR), Y(CEIL + 2) + 3, 5, 0, Math.PI*2); ctx.fill();
-    drawWheel(0, cy, LR, "mov", 0);
+    /* 動滑輪繞左邊的接觸點滾上去，轉過的角度就是 h / r */
+    drawWheel(0, cy, LR, "mov", -S.leverLift / LR);
     ctx.strokeStyle = C.metal; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(X(0), Y(cy)); ctx.lineTo(X(0), Y(136 - S.leverLift)); ctx.stroke();
     drawLoad(0, 136 - S.leverLift, P.F2 + " N");
@@ -946,10 +959,16 @@ function drawLever(rect){
   /* 動滑輪升高之後：原位虛影 + h 與 2h */
   if(!P.isFix && S.leverLift > 0.5){
     const cy = V.cy;
-    line(-LR - 6, 0, LR + 6, 0, C.ghost, 1.3, [5,5]);
-    dimV(-LR - 30, 0, cy, "h", C.teal);
-    dimV(LR + 54, -LR - 20, -LR - 20 - 2*S.leverLift, "2h", C.barA);
-    tag("重物升 h，手要拉 2h", 0, 192, C.sub, 14);
+    /* 重物：原來的高度畫一條虛線，再牽到左邊的標註上 */
+    const hx = -LR - 40;
+    line(hx - 6, 0, LR + 6, 0, C.ghost, 1.3, [5,5]);
+    line(hx - 6, cy, -LR + 6, cy, C.ghost, 1, [4,4]);
+    dimV(hx, 0, cy, "重物升 h", C.teal);
+    /* 手：原位與現位各牽一條虛線，2h 才看得出是量哪一段 */
+    const gx = LR + 62, hy0 = -LR - 20, hy1 = hy0 - 2*S.leverLift;
+    line(LR, hy0, gx + 6, hy0, C.ghost, 1, [4,4]);
+    line(LR, hy1, gx + 6, hy1, C.ghost, 1, [4,4]);
+    dimV(gx, hy0, hy1, "手拉 2h", C.barA);
   }
 
   /* ---- 槓桿：硬棒 ---- */
@@ -1027,7 +1046,7 @@ function drawLever(rect){
     /* 支點標籤放在沒有力臂的那一邊。定滑輪的支點在軸心，字要移到輪外，
        否則會壓住輪面；兩者都不加底墊。                                 */
     if(P.isFix) tag("支點 O", V.O[0], V.O[1] + LR + 22, C.ink, 15, "center", false);
-    else        tag("支點 O", V.O[0] - 14, V.O[1] + 24, C.ink, 15, "right", false);
+    else        tag("支點 O", V.O[0], V.O[1] + 46, C.ink, 15, "center", false);
     ctx.restore();
   }
 
@@ -1248,20 +1267,22 @@ function draw(){
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,w,h);
   ctx.textBaseline = "middle";
+  gridBg({x:0, y:0, w:w, h:h});          // 格線鋪滿畫布，各區再疊上去
 
   /* 面板先量度：並排時高度貼著內容，上下排時由內容決定分多少高度給它。
      頁面放大（CSS 寬度變細）時，若並排會把裝置圖擠得過窄，就改成上下排。 */
+  const HEAD = 30;                       // 頂部留給分頁標示與狀態徽章
   const dw = Math.max(224, Math.min(322, w * 0.30));
   const wide = w / h > 1.05 && w - dw >= 270;   // 有位就放右邊，真的擠才改上下排
   const q = dataItems(!wide);
   const natural = dataHeight(q, true);
   let rigRect, dataRect;
   if(wide){
-    rigRect = {x:0, y:0, w:w - dw - 10, h:h};
+    rigRect = {x:0, y:HEAD, w:w - dw - 10, h:h - HEAD};
     dataRect = {x:w - dw, y:46, w:dw - 8, h:Math.min(h - 56, natural)};
   } else {
     const dh = Math.max(120, Math.min(natural, h * 0.46));   // 讀數最多佔畫布四成六
-    rigRect = {x:0, y:0, w:w, h:h - dh - 6};
+    rigRect = {x:0, y:HEAD, w:w, h:h - dh - 6 - HEAD};
     dataRect = {x:8, y:h - dh, w:w - 16, h:dh - 8};
   }
   if(isLever()) drawLever(rigRect); else drawRig(rigRect);
