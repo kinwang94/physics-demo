@@ -68,11 +68,6 @@ body{
 
 header{display:flex; align-items:flex-end; justify-content:space-between; gap:20px; flex-wrap:wrap}
 h1{font-size:27px; font-weight:700; margin:0; letter-spacing:.01em}
-.hint{color:var(--mute); font-size:13.5px; text-align:right; line-height:1.9}
-.hint kbd{
-  font-family:"IBM Plex Mono",monospace; font-size:12.5px; border:1px solid var(--line);
-  border-bottom-width:2px; border-radius:4px; padding:1px 6px; color:var(--sub); background:var(--surface);
-}
 
 nav{display:flex; gap:6px; overflow-x:auto; overflow-y:hidden; padding-bottom:4px; scrollbar-width:thin;
      scrollbar-color:var(--lineStrong) transparent; overscroll-behavior-x:contain}
@@ -161,7 +156,10 @@ sub{font-size:.72em}
   display:flex; align-items:center; justify-content:center; gap:.3em; flex-wrap:wrap; margin:2px 0 10px;
 }
 .eq.small{font-size:19px; padding:9px 12px; margin-bottom:6px}
-var{font-family:"STIX Two Text","Times New Roman",Georgia,serif; font-style:italic; padding-right:.05em}
+/* 斜體變數後面本來留了一點空隙，但後面接 Unicode 下標（l₁、F₂）時
+   那點空隙會變成明顯的縫。改成只在兩個變數相鄰時才留空隙。      */
+var{font-family:"STIX Two Text","Times New Roman",Georgia,serif; font-style:italic}
+var + var{margin-left:.1em}
 var + sub{margin-left:-.16em}
 .eq sub, var sub{font-style:normal; font-family:inherit}
 .eq .op{padding:0 .18em}
@@ -213,7 +211,6 @@ var + sub{margin-left:-.16em}
 <div class="wrap">
   <header>
     <h1>滑輪</h1>
-    <p class="hint"><kbd>空白鍵</kbd> 播放／暫停　<kbd>←</kbd> <kbd>→</kbd> 逐格拉繩</p>
   </header>
 
   <nav role="tablist" id="tabs"></nav>
@@ -493,14 +490,7 @@ function drawLoad(cx, topY, label){
   ctx.fillStyle = C.ground; ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText(label, px + w/2, py + h/2);
 }
-function drawGrip(px, py, dirAngle){
-  ctx.save();
-  ctx.translate(px, py); ctx.rotate(dirAngle);
-  ctx.fillStyle = C.surface2; ctx.strokeStyle = C.edge; ctx.lineWidth = 1.8;
-  roundRect(-13, -6, 26, 12, 4); ctx.fill(); ctx.stroke();
-  ctx.restore();
-}
-function dimV(x, y1, y2, text, color){
+function dimV(x, y1, y2, text, color, tdx){
   const px = X(x);
   ctx.strokeStyle = color; ctx.lineWidth = 1.4;
   ctx.beginPath(); ctx.moveTo(px, Y(y1)); ctx.lineTo(px, Y(y2)); ctx.stroke();
@@ -509,7 +499,7 @@ function dimV(x, y1, y2, text, color){
     ctx.moveTo(px, e[0]); ctx.lineTo(px - 5, e[0] + 8*e[1]); ctx.lineTo(px + 5, e[0] + 8*e[1]);
     ctx.closePath(); ctx.fillStyle = color; ctx.fill();
   });
-  if(text) tag(text, x, (y1 + y2)/2, color, 14);
+  if(text) tag(text, x + (tdx || 0), (y1 + y2)/2, color, 14);
 }
 function dimH(x1, x2, y, text, color){
   const py = Y(y);
@@ -537,7 +527,7 @@ function gridBg(rect){
    疊裝（圖一）—— 同一塊夾板上的滑輪上下串起、半徑由外至內遞減，繩差不多垂直，
                   自由端斜著拉出；整條繩同一個方向繞。
    分開（圖二）—— 定滑輪一排、動滑輪一排，每段繩垂直，方便數繩段。          */
-const STACK_MAX = 5;            // 再多繩段，疊裝的繩就會重疊得看不清
+const STACK_MAX = 6;            // 疊裝可以畫到 6 段；再多就會重疊得看不清
 function canStack(rig){
   const cnt = pulleysOf(rig).length;
   return !rig.up && !rig.angle && cnt >= 2 && cnt <= STACK_MAX;
@@ -552,8 +542,8 @@ function frame(P, rig, h, s, mode){
 
   if(mode === 0){
     /* 半徑由內至外遞增：繩頭在最細那個（近掛鈎），手拉的那段在最外、最大那個 */
-    const RS  = cnt <= 4 ? R*1.58 : (cnt === 5 ? R*1.45 : R*1.3);
-    const dec = cnt <= 3 ? 0.20 : (cnt === 4 ? 0.17 : (cnt === 5 ? 0.155 : 0.135));
+    const RS  = cnt <= 4 ? R*1.58 : (cnt === 5 ? R*1.45 : R*1.32);
+    const dec = cnt <= 3 ? 0.20 : (cnt === 4 ? 0.17 : (cnt === 5 ? 0.155 : 0.115));
     const gap = cnt <= 4 ? 11 : 7;
     const rs = []; for(let i = 0; i < cnt; i++) rs.push(RS * (1 - dec*(cnt - 1 - i)));
     const fixI = [], movI = [];
@@ -566,8 +556,10 @@ function frame(P, rig, h, s, mode){
       if(k) y += rs[fixOrder[k-1]] + rs[idx] + gap;
       wheels[idx] = {kind:"fix", x:0, y:y, r:rs[idx]};
     });
-    const lift = cnt <= 4 ? (Math.max(fixI.length, movI.length) - 1) * 34
-              : (cnt === 5 ? 50 : 60);
+    /* 兩組之間要留得下每一段的編號（一個約 11 個單位），
+       所以滑輪越多，動滑輪組要放得越低，繩段才數得清楚。      */
+    const lift = cnt <= 3 ? (Math.max(fixI.length, movI.length) - 1) * 34
+               : cnt === 4 ? 70 : (cnt === 5 ? 85 : 118);
     let y2 = Y_MOV0 + lift - h;
     movOrder.forEach((idx, k) => {
       if(k) y2 -= rs[movOrder[k-1]] + rs[idx] + gap;
@@ -670,17 +662,20 @@ function drawRig(rect){
 
   /* 世界範圍取兩種畫法的聯集，動畫時比例不變 */
   /* 下界要留到 G 標籤的下緣：重物底部 + 箭頭 26 + 字高，否則拉繩為 0 時會被裁走 */
-  let bx0, bx1, by0 = rig.up ? -26 : -18, by1 = rig.up ? 248 : Y_HAND0 + STROKE + 24;
+  let bx0, bx1, by0 = rig.up ? -26 : -18, by1 = rig.up ? 232 : Y_HAND0 + STROKE + 24;
   const halfW = (pulleysOf(rig).length - 1)/2 * PITCH_SPLIT + R;
   bx0 = -halfW - 48; bx1 = halfW + 88;
+  if(ph.h > 0.4) bx0 -= 30;              // 左邊要放得下 h 的標註
   if(rig.angle){
     const th = rig.angle*Math.PI/180, d = [Math.sin(th), Math.cos(th)];
     bx1 = Math.max(bx1, halfW + R*d[1] + d[0]*(52 + STROKE) + 56);
+    by1 = Math.max(226, Y_FIX - R*d[0] + d[1]*(52 + STROKE) + 46);
   }
   if(two){
     const reach = R*1.6 + Math.sin(0.32)*(76 + STROKE) + 52;
     bx1 = Math.max(bx1, reach);
-    by1 = Math.max(by1, pulleysOf(rig).length <= 4 ? 282 : 298);
+    const pc = pulleysOf(rig).length;
+    by1 = Math.max(by1, pc <= 3 ? 282 : pc === 4 ? 316 : pc === 5 ? 330 : 362);
   }
   fitWorld(rect, bx0, by0, bx1, by1, 14);
 
@@ -730,7 +725,6 @@ function drawRig(rect){
   drawHook(G.anchor, G);
   if(G.movBox) drawHookShape(G.loadX, G.loadTop - 11, G.movBox.y1 - 2, 8, false);
   drawLoad(G.loadX, G.loadTop, fmt(rig.G) + " N");
-  drawGrip(X(G.handPt[0]), Y(G.handPt[1]), Math.atan2(G.handDir[1], G.handDir[0]) + Math.PI/2);
 
   /* 承重繩段：箭頭與編號（變形途中不畫） */
   if(S.showT && (t < 0.03 || t > 0.97)){
@@ -760,7 +754,11 @@ function drawRig(rect){
         lp = mx((gy - lo[1]) / ((up[1] - lo[1]) || 1));
       } else if(stacked){
         lp = yBot - yTop < 26 ? mx(0.5) : mx(0.74 - 0.46*(sg.idx/Math.max(n-1,1)));
-      } else lp = mx(rig.up && sg.idx === rp.segs.length - 1 ? 0.52 : 0.86);
+      } else {
+        /* 太貼近上端會壓住滑輪，按繩段長度往回收一點 */
+        const far = rig.up && sg.idx === rp.segs.length - 1 ? 0.52 : 0.86;
+        lp = mx(Math.max(0.2, Math.min(far, 1 - 22/Math.max(yBot - yTop, 1))));
+      }
       tag(String(sg.idx + 1), lp[0], lp[1], C.teal, 13);
     });
   }
@@ -773,12 +771,12 @@ function drawRig(rect){
   else                      tag("F = " + fmt(ph.F) + " N", ex + 10, ey + (hd[1] < 0 ? 4 : -2), C.accent, 16, "left");
 
   arrow(G.loadX, G.loadTop + LH, G.loadX, G.loadTop + LH + 26, C.accent, 3);
-  tag("G = " + fmt(rig.G) + " N", G.loadX, G.loadTop + LH + 38, C.accent, 16);
+  tag("G = " + fmt(rig.G) + " N", G.loadX + 14, G.loadTop + LH + 15, C.accent, 16, "left");
 
   /* 距離 */
   if(ph.h > 0.4){
     const right = hd[0] < -0.2;
-    const dx = right ? G.loadX + LW/2 + 22 : Math.min(G.loadX - LW/2 - 16, bx0 + 20);
+    const dx = right ? G.loadX + LW/2 + 24 : G.loadX - LW/2 - 24;
     const edge = G.loadX + (right ? LW/2 : -LW/2);
     line(dx, G0.loadTop + LH/2, edge, G0.loadTop + LH/2, C.ghost, 1, [4,4]);
     line(dx, G.loadTop + LH/2, edge, G.loadTop + LH/2, C.ghost, 1, [4,4]);
@@ -789,9 +787,11 @@ function drawRig(rect){
     let nx = -hd[1], ny = hd[0];
     if(nx * (hp[0] - G.loadX) < 0){ nx = -nx; ny = -ny; }   // 讓開重物那一邊
     const off = 16;
+    /* 接近水平地拉時，繩本身就貼著天花，標註要改放下方 */
+    if(Math.min(q0[1], q1[1]) + ny*off < Y_CEIL + 30){ nx = -nx; ny = -ny; }
     line(q0[0], q0[1], q0[0] + nx*off*1.4, q0[1] + ny*off*1.4, C.ghost, 1, [4,4]);
     dimSeg([q0[0] + nx*off, q0[1] + ny*off], [q1[0] + nx*off, q1[1] + ny*off],
-           "s=" + fmt(ph.s) + "cm", C.barA);
+           "s=" + fmt(ph.s) + "cm", C.barA, nx*18, ny*18);   // 字再讓開一點，不要壓住繩
   }
 
   drawLegend(rect, G.wheels, rig.Gp > 0 && G.movs.length
@@ -840,7 +840,7 @@ function drawHook(pt, G){
     ctx.strokeStyle = C.metal; ctx.lineWidth = 2.6; ctx.stroke();
   }
 }
-function dimSeg(p0, p1, text, color){
+function dimSeg(p0, p1, text, color, tdx, tdy){
   const a = [X(p0[0]), Y(p0[1])], b = [X(p1[0]), Y(p1[1])];
   const ang = Math.atan2(b[1]-a[1], b[0]-a[0]);
   ctx.strokeStyle = color; ctx.lineWidth = 1.4;
@@ -852,7 +852,7 @@ function dimSeg(p0, p1, text, color){
     ctx.lineTo(e[0][0] + 9*Math.cos(e[1] + 0.4), e[0][1] + 9*Math.sin(e[1] + 0.4));
     ctx.closePath(); ctx.fillStyle = color; ctx.fill();
   });
-  tag(text, (p0[0]+p1[0])/2, (p0[1]+p1[1])/2, color, 14);
+  tag(text, (p0[0]+p1[0])/2 + (tdx || 0), (p0[1]+p1[1])/2 + (tdy || 0), color, 14);
 }
 
 function drawLegend(rect, wheels, extra){
@@ -901,16 +901,19 @@ function leverForces(){
 function drawLever(rect){
   const V = leverForces(), P = V.P;
   const mt = A.morph;
-  fitWorld(rect, -126, -128, 146, 202, 14);
+  /* 動滑輪整組隨重物上升，手還要多拉一倍；天花要留夠高度，
+     否則提到最高時繩頭與 2h 標註會穿過天花。                  */
+  const CEIL = P.isFix ? -112 : -158;
+  fitWorld(rect, -126, CEIL - 16, 146, 202, 14);
   gridBg(rect);
 
   /* ---- 滑輪的樣子（morph = 0 時清楚，變成槓桿時淡出） ---- */
   const aP = 1 - 0.80*mt;
   ctx.save(); ctx.globalAlpha = aP;
-  drawCeiling(-118, 124, -112);
+  drawCeiling(-118, 124, CEIL);
   if(P.isFix){
     ctx.strokeStyle = C.metal; ctx.lineWidth = 5; ctx.lineCap = "round";
-    ctx.beginPath(); ctx.moveTo(X(0), Y(-110)); ctx.lineTo(X(0), Y(-LR - 8)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(X(0), Y(CEIL + 2)); ctx.lineTo(X(0), Y(-LR - 8)); ctx.stroke();
     ctx.lineCap = "butt";
     const hp = [V.F1.p[0] + V.F1.d[0]*86, V.F1.p[1] + V.F1.d[1]*86];
     strokeRope(buildRope([{c:[-LR, 130], r:0, s:1}, {c:[0,0], r:LR, s:1}, {c:hp, r:0, s:1}]),
@@ -920,10 +923,10 @@ function drawLever(rect){
     radiusMark(0, 0);
   } else {
     const cy = V.cy, hy = cy - LR - 20 - S.leverLift;   // 拉繩 s = 2h
-    strokeRope(buildRope([{c:[-LR, -110], r:0, s:1}, {c:[0,cy], r:LR, s:-1}, {c:[LR, hy], r:0, s:1}]),
+    strokeRope(buildRope([{c:[-LR, CEIL + 2], r:0, s:1}, {c:[0,cy], r:LR, s:-1}, {c:[LR, hy], r:0, s:1}]),
                C.rope, Math.max(2.6, L(1.6)));
     ctx.fillStyle = C.metal;
-    ctx.beginPath(); ctx.arc(X(-LR), Y(-110) + 3, 5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(X(-LR), Y(CEIL + 2) + 3, 5, 0, Math.PI*2); ctx.fill();
     drawWheel(0, cy, LR, "mov", 0);
     ctx.strokeStyle = C.metal; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(X(0), Y(cy)); ctx.lineTo(X(0), Y(136 - S.leverLift)); ctx.stroke();
@@ -937,7 +940,7 @@ function drawLever(rect){
     const cy = V.cy, ay = cy - LR - 34;
     arrow(-LR, ay + 30, -LR, ay - 6, C.teal, 3, 11);
     tag(fmt(P.F1) + " N", -LR - 11, ay + 12, C.teal, 16, "right");
-    tag("兩段繩各 " + fmt(P.F1) + " N，合共 " + P.F2 + " N 托住重物", 0, 178, C.sub, 14);
+    tag("兩段繩各 " + fmt(P.F1) + " N，合共 " + P.F2 + " N 托住重物", 0, 172, C.sub, 14);
   }
 
   /* 動滑輪升高之後：原位虛影 + h 與 2h */
@@ -945,8 +948,8 @@ function drawLever(rect){
     const cy = V.cy;
     line(-LR - 6, 0, LR + 6, 0, C.ghost, 1.3, [5,5]);
     dimV(-LR - 30, 0, cy, "h", C.teal);
-    dimV(LR + 30, -LR - 20, -LR - 20 - 2*S.leverLift, "2h", C.barA);
-    tag("重物升 h，手要拉 2h", 0, 199, C.sub, 14);
+    dimV(LR + 54, -LR - 20, -LR - 20 - 2*S.leverLift, "2h", C.barA);
+    tag("重物升 h，手要拉 2h", 0, 192, C.sub, 14);
   }
 
   /* ---- 槓桿：硬棒 ---- */
@@ -1102,10 +1105,14 @@ function dataItems(compact){
   };
   const gap = (h, opt) => { flush(); put(h, null, opt); };
 
+  /* 標題用真正的字距，不要用全形空格湊，否則間隔忽寬忽窄 */
   const head = (t, opt) => { flush(); put(24, (x, y, w, k) => {
     ctx.font = '500 11.5px "IBM Plex Mono", monospace';
+    const ls = "letterSpacing" in ctx;
+    if(ls) ctx.letterSpacing = "0.2em";
     ctx.fillStyle = C.mute; ctx.textAlign = "left";
     ctx.fillText(t, x, y + 12*k);
+    if(ls) ctx.letterSpacing = "0px";
   }, opt); };
   const row = (label, val, color) => pend.push({label:label, val:val, color:color});
   const bar = (label, v, max, unit, color, opt) => { flush(); put(38, (x, y, w, k) => {
@@ -1129,14 +1136,14 @@ function dataItems(compact){
 
   if(isLever()){
     const P = leverPhysics();
-    head("五　個　要　素");
-    row("支　點", "O", C.ink);
-    row("動　力　F₁", fmt(P.F1) + " N", C.teal);
+    head("五個要素");
+    row("支點", "O", C.ink);
+    row("動力 F₁", fmt(P.F1) + " N", C.teal);
     row("動力臂 l₁", P.l1txt, C.teal);
-    row("阻　力　F₂", P.F2 + " N", C.accent);
+    row("阻力 F₂", P.F2 + " N", C.accent);
     row("阻力臂 l₂", P.l2txt, C.accent);
     gap(10);
-    head("平　衡　條　件");
+    head("平衡條件");
     put(36, (x, y, w, k) => {
       ctx.font = 'italic 600 24px ' + MATHF;
       ctx.fillStyle = C.ink; ctx.textAlign = "center";
@@ -1154,9 +1161,9 @@ function dataItems(compact){
   }
 
   const ph = physics(), rig = ph.rig;
-  head("讀　數");
-  row("物　重　G", fmt(rig.G) + " N", C.ink);
-  row("拉　力　F", fmt(ph.F) + " N", C.accent);
+  head("讀數");
+  row("物重 G", fmt(rig.G) + " N", C.ink);
+  row("拉力 F", fmt(ph.F) + " N", C.accent);
   row("承重繩段 n", rig.n + " 段", C.teal);
   if(S.tab === "eff"){
     row("理想拉力", fmt(ph.ideal) + " N", C.mute);
@@ -1166,20 +1173,20 @@ function dataItems(compact){
     row("省力倍數", "×" + fmt(rig.G / ph.F), C.ink);
   }
   gap(8);
-  head("距　離　比　較");
-  bar("手拉繩　s", ph.s, STROKE, "cm", C.barA);
-  bar("重物升　h", ph.h, STROKE, "cm", C.barB);
-  note(rig.n === 1 ? "s = h　（拉多少，升多少）"
-                   : "s = " + rig.n + " × h　（拉 " + rig.n + " 倍長）");
+  head("距離比較");
+  bar("手拉繩 s", ph.s, STROKE, "cm", C.barA);
+  bar("重物升 h", ph.h, STROKE, "cm", C.barB);
+  note(rig.n === 1 ? "s = h（拉多少，升多少）"
+                   : "s = " + rig.n + " × h（拉 " + rig.n + " 倍長）");
 
   if(S.tab === "work" || S.tab === "eff"){
     gap(4, true);
-    head("功　的　比　較", true);
+    head("功的比較", true);
     const wmax = Math.max(ph.Wtot, 0.001);
-    bar("總　功　W總 = F·s", ph.Wtot, wmax, "J", C.barA, true);
-    bar("有用功　W有 = G·h", ph.Wuse, wmax, "J", C.barB, true);
+    bar("總功 W總 = F·s", ph.Wtot, wmax, "J", C.barA, true);
+    bar("有用功 W有 = G·h", ph.Wuse, wmax, "J", C.barB, true);
     if(rig.Gp > 0){
-      bar("額外功　W額", ph.Wex, wmax, "J", C.warn, true);
+      bar("額外功 W額", ph.Wex, wmax, "J", C.warn, true);
       note("額外功用在提起動滑輪", C.warn, true);
     } else {
       note("兩者相等：省力不省功", ph.Wtot > 0 ? C.ok : C.sub, true);
@@ -1222,14 +1229,14 @@ function drawData(rect, q){
 
 /* ==================== 主繪圖 ==================== */
 const NOTE = {
-  fixed:"定滑輪　FIXED PULLEY",
-  movable:"動滑輪　MOVABLE PULLEY",
-  leverFix:"槓桿模型　定滑輪",
-  leverMov:"槓桿模型　動滑輪",
-  block:"滑輪組　PULLEY SYSTEM",
-  work:"功的原理　W = F × s",
-  eff:"機械效率　EFFICIENCY",
-  quiz:"課堂小測　QUIZ"
+  fixed:"定滑輪",
+  movable:"動滑輪",
+  leverFix:"槓桿模型：定滑輪",
+  leverMov:"槓桿模型：動滑輪",
+  block:"滑輪組",
+  work:"功的原理",
+  eff:"機械效率",
+  quiz:"課堂小測"
 };
 function draw(){
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -1245,7 +1252,7 @@ function draw(){
   /* 面板先量度：並排時高度貼著內容，上下排時由內容決定分多少高度給它。
      頁面放大（CSS 寬度變細）時，若並排會把裝置圖擠得過窄，就改成上下排。 */
   const dw = Math.max(224, Math.min(322, w * 0.30));
-  const wide = w / h > 1.45 && w - dw >= 300;
+  const wide = w / h > 1.05 && w - dw >= 270;   // 有位就放右邊，真的擠才改上下排
   const q = dataItems(!wide);
   const natural = dataHeight(q, true);
   let rigRect, dataRect;
@@ -1460,7 +1467,7 @@ function railHTML(){
     <div class="panel">
       <h2>它是等臂槓桿</h2>
       <p>支點在<strong>軸心 O</strong>，兩邊的力臂都是半徑 r：</p>
-      <div class="eq"><var>F</var>₁<var>l</var>₁ = <var>F</var>₂<var>l</var>₂　→　<var>F</var> = <var>G</var></div>
+      <div class="eq"><var>F</var><sub>1</sub><var>l</var><sub>1</sub> = <var>F</var><sub>2</sub><var>l</var><sub>2</sub>　→　<var>F</var> = <var>G</var></div>
       <p>詳細的槓桿分析在<strong>第 01 頁「定滑輪槓桿」</strong>：可以放大看，並按課本的作法逐步畫出支點、作用線和力臂。</p>
     </div>
     <details class="answer"><summary>拉的方向改變，支架受力有變嗎？</summary>
@@ -1512,15 +1519,15 @@ function railHTML(){
       <h2>${P.isFix ? "定滑輪：等臂槓桿" : "動滑輪：省力槓桿"}</h2>
       ${P.isFix ? `
       <p>支點在<strong>軸心 O</strong>。無論繩沿哪個方向拉，作用線都是輪的<strong>切線</strong>，支點到它的垂直距離永遠等於<strong>半徑 r</strong>。</p>
-      <div class="eq small"><var>l</var>₁ = <var>l</var>₂ = <var>r</var>　→　<var>F</var>₁ = <var>F</var>₂</div>
+      <div class="eq small"><var>l</var><sub>1</sub> = <var>l</var><sub>2</sub> = <var>r</var>　→　<var>F</var><sub>1</sub> = <var>F</var><sub>2</sub></div>
       <p>所以拉的方向怎樣改，讀數都不變。拖動「拉的方向」看看力臂那條紅線。</p>` : `
       <p>支點在<strong>左邊繩與輪接觸的一點</strong>（那點被固定的繩拉住，瞬間不動）。</p>
       <p>動力作用線在右邊那條繩上，離支點<strong>一個直徑</strong>；阻力（物重）的作用線通過<strong>軸心</strong>，離支點一個半徑。</p>
-      <div class="eq small"><var>l</var>₁ = 2<var>r</var>　<var>l</var>₂ = <var>r</var>　→　<var>F</var>₁ = ${fr("<var>F</var>₂","2")}</div>`}
+      <div class="eq small"><var>l</var><sub>1</sub> = 2<var>r</var>　<var>l</var><sub>2</sub> = <var>r</var>　→　<var>F</var><sub>1</sub> = ${fr("<var>F</var><sub>2</sub>","2")}</div>`}
     </div>
     <div class="panel">
       <h2>平衡條件</h2>
-      <div class="eq"><var>F</var>₁ <var>l</var>₁ = <var>F</var>₂ <var>l</var>₂</div>
+      <div class="eq"><var>F</var><sub>1</sub> <var>l</var><sub>1</sub> = <var>F</var><sub>2</sub> <var>l</var><sub>2</sub></div>
       <div class="eq small">${fmt(P.F1)} × ${P.isFix ? "<var>r</var>" : "2<var>r</var>"} = ${P.F2} × <var>r</var></div>
     </div>
     <div class="panel">
@@ -1544,7 +1551,7 @@ function railHTML(){
     <div class="panel">
       <h2>滑輪組</h2>
       <p>定滑輪與動滑輪<strong>組合</strong>起來叫滑輪組：定滑輪改方向，動滑輪省力，兩樣一齊得到。</p>
-      <p>畫面預設是<strong>疊裝</strong>：同一塊夾板上的滑輪上下串起、半徑由內至外遞增，繩子斜著繞，手拉的那段由最外那個輪出來。按「<strong>分開</strong>」，滑輪會一邊移位、繩一邊重新繞，攤開成課本那種每段繩垂直、方便數繩段的圖；再按一下就合攏。兩種畫法在力學上完全一樣。n 到 6 段時疊裝會重疊，只用分開畫法。</p>
+      <p>畫面預設是<strong>疊裝</strong>：同一塊夾板上的滑輪上下串起、半徑由內至外遞增，繩子斜著繞，手拉的那段由最外那個輪出來。按「<strong>分開</strong>」，滑輪會一邊移位、繩一邊重新繞，攤開成課本那種每段繩垂直、方便數繩段的圖；再按一下就合攏。兩種畫法在力學上完全一樣。</p>
     </div>
     <div class="panel">
       <h2>只要學會數繩段</h2>
