@@ -278,17 +278,17 @@ const S = {
   tab:"leverFix",
   G:120,            // 物重 G（N）
   pull:0,           // 0..1
-  n:3,              // 滑輪組的承重繩段數
+  n:2,              // 滑輪組的承重繩段數
   angle:0,          // 定滑輪：拉的方向
   showT:true, ghost:true,
   Gp:20, nEff:2, Geff:200,     // 機械效率頁
   leverG:120, leverAng:0, leverLift:0, step:0,
-  style:0,                     // 0 實物疊裝（圖一）／1 課本分開（圖二）
+  style:1,                     // 0 實物疊裝（圖一）／1 課本分開（圖二，預設）
   quizIdx:0, pick:{},
   playing:false
 };
 /* 需要補間的量 */
-const A = {morph:0, morphT:0, sp:0, spT:0,
+const A = {morph:0, morphT:0, sp:1, spT:1,
            aO:0, aOT:0, aL:0, aLT:0, aA:0, aAT:0};
 
 /* ==================== 機械模型 ==================== */
@@ -669,7 +669,7 @@ function drawRig(rect){
 
   /* 世界範圍取兩種畫法的聯集，動畫時比例不變 */
   /* 下界要留到 G 標籤的下緣：重物底部 + 箭頭 26 + 字高，否則拉繩為 0 時會被裁走 */
-  let bx0, bx1, by0 = rig.up ? -26 : -18, by1 = rig.up ? 232 : Y_HAND0 + STROKE + 24;
+  let bx0, bx1, by0 = rig.up ? -26 : -18, by1 = rig.up ? 244 : Y_HAND0 + STROKE + 24;
   const halfW = (pulleysOf(rig).length - 1)/2 * PITCH_SPLIT + R;
   /* 左邊固定預留 h 標註的位置：若按 h 有沒有變大才讓位，
      拉繩時世界範圍會突然改變，整幅圖連天花都會跳一下。      */
@@ -746,8 +746,16 @@ function drawRig(rect){
       const mx = q => [lo[0] + (up[0]-lo[0])*q, lo[1] + (up[1]-lo[1])*q];
       const k = stacked ? 0.66 - 0.40*(sg.idx/Math.max(n-1,1)) : 0.40;
       if(yBot - yTop > 26){
-        const p0 = mx(k - 0.09), p1 = mx(k + 0.09);
-        arrow(p0[0], p0[1], p1[0], p1[1], C.teal, 2, 9);
+        if(rig.up && sg.idx === 0){
+          /* 動滑輪：接天花那一段的張力跟手拉那段一樣大，標出來才看得出
+             兩段各 F、合起來托住重物。                                  */
+          const p0 = mx(0.34), p1 = mx(0.60);
+          arrow(p0[0], p0[1], p1[0], p1[1], C.teal, 3, 11);
+          tag("F = " + fmt(ph.F) + " N", p0[0] - 11, (p0[1] + p1[1])/2, C.teal, 16, "right");
+        } else {
+          const p0 = mx(k - 0.09), p1 = mx(k + 0.09);
+          arrow(p0[0], p0[1], p1[0], p1[1], C.teal, 2, 9);
+        }
       }
       /* 疊裝時所有編號排在兩組之間的空隙：相鄰編號上下錯開，免得擠成一團 */
       let lp;
@@ -806,6 +814,11 @@ function drawRig(rect){
   const gLeft = G0.handPt[0] > G.loadX && G0.handPt[0] - G.loadX < 60;
   tag("G = " + fmt(rig.G) + " N", G.loadX + (gLeft ? -26 : 14), G.loadTop + LH + 15,
       C.accent, 16, gLeft ? "right" : "left");
+  if(rig.up){                                  // 兩段繩各 F，合起來剛好托住整組重量
+    const total = rig.G + ph.m * rig.Gp;
+    tag("兩段繩各 " + fmt(ph.F) + " N，合起來托住 " + fmt(total) + " N",
+        G.loadX, G.loadTop + LH + 36, C.sub, 14);
+  }
 
   drawLegend(rect, G.wheels, rig.Gp > 0 && G.movs.length
     ? "動滑輪 " + fmt(rig.Gp) + " N × " + G.movs.length + " 個，也要一起提起" : null);
@@ -1572,7 +1585,7 @@ function railHTML(){
     <div class="panel">
       <h2>滑輪組</h2>
       <p>定滑輪與動滑輪<strong>組合</strong>起來叫滑輪組：定滑輪改方向，動滑輪省力，兩樣一齊得到。</p>
-      <p>畫面預設是<strong>疊裝</strong>：同一塊夾板上的滑輪上下串起、半徑由內至外遞增，繩子斜著繞，手拉的那段由最外那個輪出來。按「<strong>分開</strong>」，滑輪會一邊移位、繩一邊重新繞，攤開成課本那種每段繩垂直、方便數繩段的圖；再按一下就合攏。兩種畫法在力學上完全一樣。</p>
+      <p>畫面預設是<strong>分開</strong>：定滑輪一排、動滑輪一排，每段繩垂直，最方便數繩段，也是課本的畫法。按「<strong>疊裝</strong>」，滑輪會一邊移位、繩一邊重新繞，合攏成實物的樣子——同一塊夾板上的滑輪上下串起、半徑由內至外遞增，繩子斜著繞，手拉的那段由最外那個輪出來；再按一下就攤開。兩種畫法在力學上完全一樣。</p>
     </div>
     <div class="panel">
       <h2>只要學會數繩段</h2>
@@ -1600,6 +1613,7 @@ function railHTML(){
       <h2>功的原理</h2>
       <p>功 = 力 × 沿力方向移動的距離。用滑輪組時：</p>
       <div class="eq"><var>F</var> × <var>s</var> = ${fr("<var>G</var>","<var>n</var>")} × <var>n</var> <var>h</var> = <var>G</var> <var>h</var></div>
+      <p>為什麼一定是這樣？因為<strong>功就是能量轉移的量度</strong>。機械只是把能量由手傳給重物，本身既不會生出能量，也不會把能量儲起來；理想情況下手付出多少能量，重物就得到多少。<span class="em">轉移的能量一樣多，功自然一樣多</span>。</p>
       <p>省下來的力，全部由<strong>多走的距離</strong>補回。所以</p>
       <div class="eq" style="color:var(--accent)">使用任何機械都不能省功</div>
     </div>
@@ -1618,7 +1632,7 @@ function railHTML(){
       <div class="eq small"><var>W</var><sub>有</sub> = 600 × 2 = 1200 J</div>
     </div>
     <details class="answer"><summary>那機械到底幫了我們什麼？</summary>
-      <div class="body">把一次過需要的<b>大力</b>，換成分很多次的<b>小力</b>。人的肌肉出不到 600 N，但出 150 N 拉 8 m 就做得到。功沒有省，省的是「一次要出多大力」。</div>
+      <div class="body">把一次過需要的<b>大力</b>，換成分很多次的<b>小力</b>。人的肌肉出不到 600 N，但出 150 N 拉 8 m 就做得到。要轉移的<b>能量</b>一點沒有少，機械改變的只是「一次要出多大力」。</div>
     </details>`;
 
   if(S.tab === "eff") return `
